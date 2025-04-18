@@ -10,12 +10,12 @@ class Process():
         self._state = 0 # ready : 1, waiting : 2, executing : 3, finish : 4
         self._execution_time = random()*5*execution_time_level
         self._priority = 0
-        self._creating_time = float()
 
         #stastics
         self.__created = time()
-        self._turnaround_time = float()
-        self._wait_time = float()
+        self.__ready_since = float(0)
+        self._turnaround_time = float(0)
+        self._wait_time = float(0)
     
     @property
     def pid(self) -> int:
@@ -31,14 +31,14 @@ class Process():
     
     @property
     def turnaround_time(self) :
-        pass
+        return round(self._turnaround_time * 10**6, 2)
     
     @property
     def wait_time(self):
-        pass
+        return round(self._wait_time  * 10**6, 2)
 
     def set_pid(self, pid) -> bool | int:
-        if not self._id:
+        if not self._pid:
             self._pid = pid
             return pid
         else:
@@ -50,13 +50,21 @@ class Process():
             return priority
         return False
 
+    def update_turnaround(self):
+        self._turnaround_time = time() - self.__created
+
+    def update_wait_time(self):
+        self._wait_time += time() - self.__ready_since
+
     def ready(self) -> None:
         self._state = 1
+        self.__ready_since = time()
 
     def wait(self) -> None:
         self._state = 2
 
-    def executing(self, clock) -> bool:
+    def execute(self, clock) -> bool:
+        self.update_wait_time()
         self._state = 3
         if self._execution_time > 0:
             self._execution_time -= clock
@@ -64,6 +72,7 @@ class Process():
         return False
     
     def finish(self):
+        self.update_turnaround()
         self._state = 4
 
 class Fcfs_simulator():
@@ -83,9 +92,13 @@ class Fcfs_simulator():
     def create_process(self) -> None:
         process = Process()
         pid = False
-        while type(pid) != int: pid = process.set_pid(randint)
+        while type(pid) != int: 
+            pid = randint(100,1000)
+            if pid in self.__processes_ids: pid = False
+        process.set_pid(pid)
         self.__processes_ids.append(pid)
-        self.__new.put(process)
+        self.__new.append(process)
+        print(f"process {process.pid} created")
 
     def get_out(self, process : object) -> bool:
         state = process.state
@@ -114,8 +127,9 @@ class Fcfs_simulator():
         if len(self.__ready) > 0:
             process = self.__ready.popleft()
             self.__executing = process
-            while process.execute():
-                continue
+            print(f"Executing {self.__executing.pid}", end='')
+            while process.execute(self.__clock):
+                print(".", end='')
             if self.get_out(process): self.gotofinish(process)
             else: raise RuntimeError("deu ruim")
             return True
@@ -140,11 +154,24 @@ class Fcfs_simulator():
                 break
 
         while self.execute():
-            print("Executando...")
+            print("finish")
 
+        print("Simulation Report")
         while True:
             try:
                 process = self.__finish.popleft()
-                print(f"id : {process.pid} - finish!")
+                print(f"id : {process.pid} - success - turnaround: {process.turnaround_time} us - wait time: {process.wait_time} us")
             except IndexError:
                 break
+
+
+if __name__ == "__main__":
+    fcfs = Fcfs_simulator()
+    
+    for i in range(5):
+        fcfs.create_process()
+    
+    fcfs.start_simulation()
+
+
+
