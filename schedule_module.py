@@ -2,14 +2,17 @@ from time import sleep
 from time import time
 from collections import deque
 from random import randint, random
+from threading import Lock, Condition, Thread
 
-class Process():
+class Process:
     def __init__(self, execution_time_level = 1):
         #atribute
         self._pid = 0
         self._state = 0 # ready : 1, waiting : 2, executing : 3, finish : 4
-        self._execution_time = random()*5*execution_time_level
+        self._execution_time = round(random()*10*execution_time_level, 1)
         self._priority = 0
+        self._event_time = round(random()*5, 1) if randint(1,5) >= 4 else 0
+        self._event_at = round(self.execution_time / 2, 1)
 
         #stastics
         self.__created = time()
@@ -24,6 +27,10 @@ class Process():
     @property
     def state(self) -> int:
         return self._state
+    
+    @property
+    def event_time(self) -> float:
+        return self._event_time
     
     @property
     def execution_time(self) -> float:
@@ -56,12 +63,23 @@ class Process():
     def update_wait_time(self):
         self._wait_time += time() - self.__ready_since
 
+    def check_event(self):
+        if self._event_time > 0 and self._event_at > self._execution_time:
+            return True
+        return False
+
     def ready(self) -> None:
         self._state = 1
         self.__ready_since = time()
 
-    def wait(self) -> None:
+    def wait(self, clock) -> bool:
         self._state = 2
+        if self._event_time > 0:
+            self._event_time -= clock
+            # print(self._event_time)
+            return True
+        # print(self._event_time)
+        return False
 
     def execute(self, clock) -> bool:
         self.update_wait_time()
@@ -75,10 +93,11 @@ class Process():
         self.update_turnaround()
         self._state = 4
 
-class Fcfs_simulator():
+class schedule_simulator:
     def __init__(self):
         self.__processes_ids = list()
         self.__clock = 0.1
+
         self.__new = deque()
         self.__ready = deque()
         self.__waiting = list()
@@ -100,7 +119,7 @@ class Fcfs_simulator():
         self.__new.append(process)
         print(f"process {process.pid} created")
 
-    def get_out(self, process : object) -> bool:
+    def __get_out(self, process : object) -> bool:
         state = process.state
         if state == 1: self.__ready.remove(process)
         elif state == 2: self.__waiting.remove(process)
@@ -109,52 +128,86 @@ class Fcfs_simulator():
             return False
         return True
 
-    def gotoready(self, process : object)  -> bool:
-        if self.get_out(process) or process.state == 0: 
+    def __gotoready(self, process : object) -> bool:
+        if self.__get_out(process) or process.state == 0: 
             self.__ready.append(process)
             process.ready()
             return True
         return False
     
-    def gotowait(self, process : object)  -> bool:
-        if self.get_out(process):
-            self.__finish.append(process)
-            process.wait()
-            return True
-        return False
-
-    def execute(self) -> None:
-        if len(self.__ready) > 0:
-            process = self.__ready.popleft()
-            self.__executing = process
-            print(f"Executing {self.__executing.pid}", end='')
-            while process.execute(self.__clock):
-                print(".", end='')
-            if self.get_out(process): self.gotofinish(process)
-            else: raise RuntimeError("deu ruim")
+    def __gotowait(self, process : object)  -> bool:
+        if self.__get_out(process):
+            self.__waiting.append(process)
             return True
         return False
     
-    def gotofinish(self, process : object) -> bool:
-        if self.get_out(process):
+    def __gotofinish(self, process : object) -> bool:
+        if self.__get_out(process):
             self.__finish.append(process)
             process.finish()
             return True
         return False
 
-    def start_simulation(self):
+    def execute(self) -> None:
+        status = bool()
+
+        if self.__executing != None:
+            process = self.__executing
+            if process.execute(self.__clock):
+                print(".", end='')
+                # print(".")
+            else:
+                self.__gotofinish(process)
+                print("finish")
+
+            if process.check_event():
+                # print("fui pra espera")
+                # print(process.check_event())
+                self.__gotowait(process)
+
+        elif len(self.__ready) > 0:
+            process = self.__ready.popleft()
+            self.__executing = process
+            print(f"Executing {self.__executing.pid}", end='')            
+            # print(f"Executing {self.__executing.pid}")
+    
+    def wait(self) -> None:
+        if len(self.__waiting) > 0:
+            for process in self.__waiting:
+                print(f"!", end='')
+                temp = process.wait(self.__clock)
+                # print(temp)
+                if not temp:
+                    self.__gotoready(process)
+                    # print("fui pra pronto")
+
+    def check_finish(self) -> None:
+        if self.__executing == None \
+        and len(self.__waiting) == 0 \
+        and len(self.__ready) == 0:
+             return True
+        return False
+
+    def start_simulation(self) -> None:
         
+        print("------------------------------------------------------------")
         print("Creating processes...")
         while True:
             try:
                 process = self.__new.popleft()
-                self.gotoready(process)
+                self.__gotoready(process)
                 print(f"id : {process.pid} - ready!")
+                print(f"execution_time : {process._execution_time} - event_time {process._event_time} - event_at {process._event_at}")
             except IndexError:
                 break
 
-        while self.execute():
-            print("finish")
+        print("------------------------------------------------------------")
+        while self.__clock != 0:
+            self.execute()
+            self.wait()
+            
+            if self.check_finish():
+                self.__clock = 0
 
         print("Simulation Report")
         while True:
@@ -166,12 +219,9 @@ class Fcfs_simulator():
 
 
 if __name__ == "__main__":
-    fcfs = Fcfs_simulator()
+    fcfs = schedule_simulator()
     
     for i in range(5):
         fcfs.create_process()
     
     fcfs.start_simulation()
-
-
-
