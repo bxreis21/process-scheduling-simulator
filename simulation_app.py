@@ -1,5 +1,6 @@
 import streamlit as st
-from schedule_module import schedule_simulator
+from schedule_module.fcfs import schedule_simulator
+from schedule_module.mlfq import schedule_simulator
 
 # ---------------------------------------
 # Funções
