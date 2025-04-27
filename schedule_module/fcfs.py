@@ -115,7 +115,6 @@ class schedule_simulator:
         process.set_pid(pid)
         self.__processes_ids.append(pid)
         self.__new.append(process)
-        print(f"process {process.pid} created")
 
     def __get_out(self, process : object) -> bool:
         state = process.state
@@ -164,7 +163,6 @@ class schedule_simulator:
     def wait(self) -> None:
         if len(self.__waiting) > 0:
             for process in self.__waiting:
-                print(f"!", end='')
                 temp = process.wait(self.__clock)
                 if not temp:
                     self.__gotoready(process)
@@ -176,19 +174,18 @@ class schedule_simulator:
              return True
         return False
 
-    def start_simulation(self) -> None:
+    def initialize(self) -> None:
         
         while True:
             try:
                 process = self.__new.popleft()
                 self.__gotoready(process)
-                print(f"id : {process.pid} - ready!")
-                print(f"execution_time : {process._execution_time} - event_time {process._event_time} - event_at {process._event_at}")
+                
             except IndexError:
                 break
 
     def simulation_report(self) -> dict:
-        def processo_to_dict(p):
+        def process_to_dict(p):
             d = {
                 "PID": p.pid,
                 "Exec": p.execution_time,
@@ -198,10 +195,10 @@ class schedule_simulator:
             return d
 
         return {
-            "ready": [processo_to_dict(p) for p in self.__ready],
-            "execute": [processo_to_dict(self.__executing)] if self.__executing else [],
-            "waiting": [processo_to_dict(p) for p in self.__waiting],
-            "finish": [processo_to_dict(p) for p in self.__finish],
+            "ready": [process_to_dict(p) for p in self.__ready],
+            "execute": [process_to_dict(self.__executing)] if self.__executing else [],
+            "waiting": [process_to_dict(p) for p in self.__waiting],
+            "finish": [process_to_dict(p) for p in self.__finish],
         }
     
 if __name__ == "__main__":

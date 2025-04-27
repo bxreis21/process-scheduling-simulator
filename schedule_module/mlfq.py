@@ -13,7 +13,7 @@ class Process:
         self._priority = 0 # 1 - 3
         self._clock_count = 0
         self._waiting_type = 0 # 1 - 3
-        self._event_time = randint(1,5) if randint(1,5) >= 4 else 0
+        self._event_time = 1 if randint(1,5) >= 2 else 0
         self._event_at = self.execution_time // 2
 
         #stastics
@@ -47,6 +47,10 @@ class Process:
         return self._event_time
     
     @property
+    def event_at(self) -> float:
+        return self._event_at
+    
+    @property
     def execution_time(self) -> float:
         return self._execution_time
     
@@ -65,14 +69,15 @@ class Process:
         else:
             return False
 
-    def set_priority(self, priority : int) -> bool | int:
-        self.priority = priority
+    def set_priority(self, priority : int) -> int:
+        self._priority = priority
         return priority
-        
     
     def set_waiting_type (self, waiting_type : int) -> bool | int:
         if not self._waiting_type:
             self._waiting_type = waiting_type
+            if self._event_time > 0:
+                self._event_time = (5 if self._waiting_type == 1 else (3 if self._waiting_type == 2 else 1))
             return waiting_type
         return False
 
@@ -83,7 +88,7 @@ class Process:
         self._wait_time += time() - self.__ready_since
 
     def check_event(self):
-        if self._event_time > 0 and self._event_at > self._execution_time:
+        if self._event_time > 0 and self._event_at >= self._execution_time:
             return True
         return False
 
@@ -107,6 +112,7 @@ class Process:
         if self._execution_time > 0:
             self._clock_count += 1
             self._execution_time -= clock
+            if self._execution_time == 0: return False
             return True
         return False
     
@@ -116,51 +122,40 @@ class Process:
         self._state = 4
 
 class Queue():
-    def __init__(self, qtype, quantum : int, clock = 0.1):
-        self.__quantum = quantum
+    def __init__(self, qtype : int, clock = 1):
         self.__queue = deque()
         self.__running = None
         self.__clock = clock
+        self.__type = qtype # 1 : fifo , 2 : execute , 3 : wait 
 
-        if qtype not in range(1, 4):
-            raise AttributeError("qtype must be in range 1-3")
-        else: self.__type = qtype # 1 : fifo , 2 : execute , 3 : wait 
-
-    @property
-    def qtype(self):
-        return self.__type
-    
-    @property
-    def quantum(self):
-        return self.__quantum
+    def __getitem__(self, index):
+        return self.__queue[index]
 
     def __len__(self):
         return len(self.__queue)
+    
+    @property
+    def qtype(self):
+        return self.__type
 
     def run(self):
         if self.__type == 2:
-            if self.__running != None:
-                process = self.__running
+            
+            process = self.__queue[0]
 
-                if process.check_event():
-                    process.wait(self.__clock, waiting = False)
-                    return self.remove()
+            if process.check_event():
+                process.wait(self.__clock, waiting = False)
+                return self.remove()
+        
+            elif not process.execute(self.__clock):
+                process.finish()
+                return self.remove()
             
-                elif not process.execute(self.__clock):
-                    process.finish()
-                    return self.remove()
-                
-                elif process.clock_count == self.__quantum:
-                    process.ready()
-                    return self.remove()
-                
-                else: return process
+            elif process.clock_count == process.priority*2:
+                process.ready()
+                return self.remove()
             
-            elif len(self.__queue) > 0:
-                process = self.__queue[0]
-                self.__running = process
-            
-            else: return None
+            else: return process
 
 
         elif self.__type == 3:
@@ -187,10 +182,12 @@ class Queue():
 
     def remove(self) -> object:
         self.__running = None
-        return self.__queue.popleft()
-
+        if len(self.__queue) > 0:
+            return self.__queue.popleft()
+        return None
+    
     def add(self, process : object) -> object:
-        return self.__queue.append()
+        return self.__queue.append(process)
 
 
 class schedule_simulator:
@@ -200,27 +197,18 @@ class schedule_simulator:
 
         self.__new = Queue(1)
         self.__finish = Queue(1)
-        self.__ready = {1: Queue(2), 2: Queue(2), 3: Queue(2)}
+        self.__executing = Queue(2)
+        self.__ready = {1: Queue(1), 2: Queue(1), 3: Queue(1)}
         self.__waiting = {1: Queue(3), 2: Queue(3), 3: Queue(3)}
 
     def initialize(self):
-        while True:
-            try:
-                process = self.__new.popleft()
-                self.__gotoready(process)
-                print(f"id : {process.pid}, priority : {process.priority} - ready!")
-                print(f"execution_time : {process._execution_time} - event_time {process._event_time} - event_at {process._event_at}")
-            except IndexError:
-                break       
+        for i in range(len(self.__new)):
+            process = self.__new.remove()
+            self.__gotoready(process)
 
-    def one_three(number : int) -> int:
-        if number < 1: return 1
-        elif number > 3 : return 3
-        else: return number
-
-    def len_dict_queue(dict : dict):
+    def len_dict_queue(self, dictionary : dict):
         total = 0
-        for key, value in enumerate(dict):
+        for key, value in dictionary.items():
             total += len(value)
         
         return total
@@ -229,7 +217,17 @@ class schedule_simulator:
         self.__clock = clock
         return self.__clock
 
-    def create_process(self, priority = randint(1,3), waiting_type = randint(1,3)) -> None:
+    def create_process(self, priority = None, waiting_type = None) -> None:
+        def one_three(number : int) -> int:
+            if number < 1: return 1
+            elif number > 3 : return 3
+            else: return number
+
+        if priority is None:
+            priority = randint(1, 3)
+        if waiting_type is None:
+            waiting_type = randint(1, 3)
+
         process = Process()
         pid = False
         while type(pid) != int: 
@@ -237,54 +235,62 @@ class schedule_simulator:
             if pid in self.__processes_ids: pid = False
         process.set_pid(pid)
 
-        process.set_priority(self.one_three(priority))
-        process.set_waiting_type(self.one_three(waiting_type))
+        process.set_priority(one_three(priority))
+        process.set_waiting_type(one_three(waiting_type))
 
         self.__processes_ids.append(pid)
-        self.__new.append(process)
-        print(f"process {process.pid} created")
+        self.__new.add(process)
 
-    def __gotoready(self, process : object) -> bool:
+    def __gotoready(self, process : object) -> object:
         return self.__ready[process.priority].add(process)
     
-    def __gotowait(self, process : object)  -> bool:
+    def __gotowait(self, process : object)  -> object:
         return self.__waiting[process.waiting_type].add(process)
     
-    def __gotofinish(self, process : object) -> bool:
+    def __gotoexecuting(self, process : object) -> object:
+        if len(self.__executing) > 0: raise RuntimeError("Erro de algoritmo, fila de execução ocupada.")
+        return self.__executing.add(process)
+
+    def __gotofinish(self, process : object) -> object:
         return self.__finish.add(process)
 
     def check_finish(self) -> None:
-        if self.__executing == None \
-        and len(self.__waiting) == 0 \
-        and len(self.__ready) == 0:
+        if len(self.__executing) == 0 \
+        and self.len_dict_queue(self.__waiting) == 0 \
+        and self.len_dict_queue(self.__ready) == 0:
              return True
         return False
     
     def execute(self) -> None:
-        if self.len_dict_queue(self.__ready) > 0:
-            for key, queue in enumerate(self.__ready):
-                process = queue.run()
-                if not process:
-                    continue
-                else:
-                    if process.state == 1:
-                        if queue.qtype == 2: process.set_priority(1 if process.priority == 3 else (process.priority - 1))
-                        self.__gotoready(process)
+        if len(self.__executing) == 0:
+            if self.len_dict_queue(self.__ready) > 0:
+                for key, queue in self.__ready.items():
+                    process = queue.run()
+                    if not process:
+                        continue
+                    else:
+                        self.__gotoexecuting(process)
+                    return True
+            
+        else:
+            process = self.__executing.run()
+            if process.state == 1:
+                process.set_priority(1 if process.priority == 3 else (process.priority + 1))
+                self.__gotoready(process)
 
-                    elif process.state ==  2:
-                        self.__gotowait(process)
-                    
-                    elif process.state == 4:
-                        self.__gotofinish(process)
-                    break
+            elif process.state ==  2:
+                self.__gotowait(process)
+
+            elif process.state == 4:
+                self.__gotofinish(process)
 
             return True
         
         return False
     
     def wait(self) -> None:
-        if self.len_dict_queue(self.__ready) > 0:
-            for key, queue in enumerate(self.__waiting):
+        if self.len_dict_queue(self.__waiting) > 0:
+            for key, queue in self.__waiting.items():
                 process = queue.run()
 
                 if not process:
@@ -292,44 +298,45 @@ class schedule_simulator:
                 else:
                     if process.state ==  1:
                         self.__gotoready(process)
+
             return True
         
         return False
 
     def simulation_report(self) -> dict:
-        def filas_para_lista(dicionario_deques):
-            return [list(dicionario_deques[p]) for p in range(1, 4)]
 
         def process_to_dict(p):
             d = {
                 "PID": p.pid,
                 "Exec": p.execution_time,
+                "Quantum": p.clock_count,
                 "Wait": p.event_time,
+                "Event_at": p.event_at
             }
             return d
 
-        executing = None
-        for priority, queue in self.__ready:
-            if len(queue) > 0:
-                executing = queue[0]
-                break
-
         return {
-            "ready_1": [process_to_dict(p) for p in self.__ready[1] if p != executing],
-            "ready_2": [process_to_dict(p) for p in self.__ready[2] if p != executing],
-            "ready_3": [process_to_dict(p) for p in self.__ready[3] if p != executing],
-            "execute": process_to_dict(executing),
-            "waiting_1": [process_to_dict(p) for p in self.__waiting],
-            "waiting_2": [process_to_dict(p) for p in self.__waiting],
-            "waiting_3": [process_to_dict(p) for p in self.__waiting],
+            "ready_1": [process_to_dict(p) for p in self.__ready[1]],
+            "ready_2": [process_to_dict(p) for p in self.__ready[2]],
+            "ready_3": [process_to_dict(p) for p in self.__ready[3]],
+            "executing": [process_to_dict(p) for p in self.__executing],
+            "waiting_1": [process_to_dict(p) for p in self.__waiting[1]],
+            "waiting_2": [process_to_dict(p) for p in self.__waiting[2]],
+            "waiting_3": [process_to_dict(p) for p in self.__waiting[3]],
             "finish": [process_to_dict(p) for p in self.__finish],
         }
     
 if __name__ == "__main__":
-    fcfs = schedule_simulator()
+    mlfq = schedule_simulator()
     
     for i in range(5):
-        fcfs.create_process()
+        mlfq.create_process()
     
-    fcfs.start_simulation()
-    print(fcfs.simulation_report())
+    mlfq.initialize()
+
+    print(mlfq.simulation_report())
+
+    mlfq.execute()
+    mlfq.wait()
+
+    print(mlfq.simulation_report())
