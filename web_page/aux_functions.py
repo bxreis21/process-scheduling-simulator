@@ -5,14 +5,15 @@ from schedule_module.mlfq import schedule_simulator as mlfq
 # Funções
 # ---------------------------------------
 
-def show_process(st, p, emoji="🔵"):
+def show_process(st, p, emoji="🔵", finish = False):
     st.markdown(f"""
     <div style="border: 1px solid #ccc; border-radius: 10px; padding: 10px; margin-bottom: 10px;
                 background-color: #000000">
         <strong>{emoji} {p['PID']}</strong><br>
         🧮 Execução: {p['Exec']}<br>
-        ⌛ Espera: {p['Wait']}<br>
-        {'🚫 Event At: ' + str(p['Event_at']) if 'Event_at' in p else ''}
+        ⌛ Espera: {p['Wait']}
+        {'<br>🕐 Turnaround: ' + str(p['Turnaround']) if finish else ''}<br>
+        {'🕐 Wait Time: ' + str(p['Wait_time']) if finish else ''}
     </div>
     """, unsafe_allow_html=True)
 

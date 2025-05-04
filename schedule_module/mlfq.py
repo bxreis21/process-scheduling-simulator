@@ -1,24 +1,19 @@
-from time import sleep
-from time import time
 from collections import deque
-from random import randint, random
-from threading import Lock, Condition, Thread
+from random import randint
+from datetime import datetime
 
 class Process:
     def __init__(self):
         #atribute
         self._pid = 0
         self._state = 0 # ready : 1, waiting : 2, executing : 3, finish : 4
-        self._execution_time = randint(1, 10)
+        self._execution_time = randint(2, 15)
         self._priority = 0 # 1 - 3
         self._clock_count = 0
         self._waiting_type = 0 # 1 - 3
         self._event_time = 1 if randint(1,5) >= 2 else 0
         self._event_at = self.execution_time // 2
 
-        #stastics
-        self.__created = time()
-        self.__ready_since = 0
         self._turnaround_time = 0
         self._wait_time = 0
     
@@ -56,11 +51,11 @@ class Process:
     
     @property
     def turnaround_time(self) :
-        return round(self._turnaround_time, 2)
+        return self._turnaround_time
     
     @property
     def wait_time(self):
-        return round(self._wait_time  * 10**6, 2)
+        return self._wait_time
 
     def set_pid(self, pid) -> bool | int:
         if not self._pid:
@@ -82,10 +77,10 @@ class Process:
         return False
 
     def update_turnaround(self):
-        self._turnaround_time = time() - self.__created
+        self._turnaround_time += 1
 
     def update_wait_time(self):
-        self._wait_time += time() - self.__ready_since
+        self._wait_time += 1
 
     def check_event(self):
         if self._event_time > 0 and self._event_at >= self._execution_time:
@@ -95,7 +90,6 @@ class Process:
     def ready(self) -> None:
         self._state = 1
         self._clock_count = 0
-        self.__ready_since = time()
 
     def wait(self, clock, waiting = True) -> bool:
         self._state = 2
@@ -107,7 +101,6 @@ class Process:
         return False
 
     def execute(self, clock) -> bool:
-        self.update_wait_time()
         self._state = 3
         if self._execution_time > 0:
             self._clock_count += 1
@@ -122,7 +115,7 @@ class Process:
         self._state = 4
 
 class Queue():
-    def __init__(self, qtype : int, clock = 1):
+    def __init__(self, qtype : int, clock = 1, ready = False):
         self.__queue = deque()
         self.__running = None
         self.__clock = clock
@@ -188,6 +181,15 @@ class Queue():
     
     def add(self, process : object) -> object:
         return self.__queue.append(process)
+    
+    def update_wait_times(self) -> None:
+        for process in self.__queue:
+            process.update_wait_time()
+
+    def update_turnaround_times(self) -> None:
+        for process in self.__queue:
+            process.update_turnaround()
+
 
 
 class schedule_simulator:
@@ -217,14 +219,12 @@ class schedule_simulator:
         self.__clock = clock
         return self.__clock
 
-    def create_process(self, priority = None, waiting_type = None) -> None:
+    def create_process(self, waiting_type = None) -> None:
         def one_three(number : int) -> int:
             if number < 1: return 1
             elif number > 3 : return 3
             else: return number
 
-        if priority is None:
-            priority = randint(1, 3)
         if waiting_type is None:
             waiting_type = randint(1, 3)
 
@@ -235,7 +235,7 @@ class schedule_simulator:
             if pid in self.__processes_ids: pid = False
         process.set_pid(pid)
 
-        process.set_priority(one_three(priority))
+        process.set_priority(1)
         process.set_waiting_type(one_three(waiting_type))
 
         self.__processes_ids.append(pid)
@@ -303,6 +303,21 @@ class schedule_simulator:
         
         return False
 
+    def update_processes_statistics(self):
+        #wait time
+        for key, queue in self.__ready.items():
+            queue.update_wait_times()
+            #turnaround
+            queue.update_turnaround_times()
+        
+        #turnaround_times
+        #em espera
+        for key, queue in self.__waiting.items():
+            queue.update_turnaround_times()
+
+        #em execucao
+        self.__executing.update_turnaround_times()
+
     def simulation_report(self) -> dict:
 
         def process_to_dict(p):
@@ -311,7 +326,9 @@ class schedule_simulator:
                 "Exec": p.execution_time,
                 "Quantum": p.clock_count,
                 "Wait": p.event_time,
-                "Event_at": p.event_at
+                "Event_at": p.event_at,
+                "Turnaround": p.turnaround_time,
+                "Wait_time": p.wait_time
             }
             return d
 
@@ -326,17 +343,39 @@ class schedule_simulator:
             "finish": [process_to_dict(p) for p in self.__finish],
         }
     
+    @staticmethod
+    def log_simulation_report(report: dict, cycle: int, log_path="simulacao.log"):
+        separator = "=" * 40
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log = [f"\n{separator}\n Cycle {cycle} - {timestamp} \n{separator}"]
+
+        for fila, process in report.items():
+            log.append(f"\n[{fila.upper()}] ({len(process)} processo(s))")
+            for proc in process:
+                line = f"PID: {proc['PID']:>4} | Exec: {proc['Exec']:>3} | Qnt: {proc['Quantum']:>2} | Wait: {proc['Wait']:>3} | At: {proc['Event_at']:>2} | Turn: {proc['Turnaround']:>5} | WTime: {proc['Wait_time']:>7}"
+                log.append(line)
+
+        log_str = "\n".join(log)
+
+        print(log_str)
+
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(log_str + "\n")
+    
 if __name__ == "__main__":
+
     mlfq = schedule_simulator()
     
-    for i in range(5):
+    for i in range(2):
         mlfq.create_process()
     
     mlfq.initialize()
 
-    print(mlfq.simulation_report())
-
-    mlfq.execute()
-    mlfq.wait()
-
-    print(mlfq.simulation_report())
+    cycle = 1
+    while not mlfq.check_finish():
+        mlfq.execute()
+        mlfq.wait()
+        mlfq.update_processes_statistics()
+        report = mlfq.simulation_report()
+        mlfq.log_simulation_report(report, cycle)
+        cycle += 1

@@ -15,7 +15,7 @@ def mlfq_simulation(st):
 
         with st.expander("Expandir"):
             for p in st.session_state.simulation_vars["finish"]:
-                show_process(st, p, "⚪")
+                show_process(st, p, "⚪", finish=True)
 
     st.markdown("---")
 

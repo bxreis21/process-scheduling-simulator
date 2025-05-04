@@ -64,7 +64,12 @@ if st.sidebar.button("Rodar Ciclo de Clock"):
         for i in range(st.session_state.clock):
             st.session_state.simulator.execute()
             st.session_state.simulator.wait()
+            if st.session_state.level_running == "MLFQ":
+                st.session_state.simulator.update_processes_statistics()
+                st.session_state.simulator.log_simulation_report(st.session_state.simulator.simulation_report(), 0)
+
             st.session_state.simulation_vars = st.session_state.simulator.simulation_report()
+            
             if st.session_state.simulator.check_finish():
                     st.session_state.running = False
     st.rerun()

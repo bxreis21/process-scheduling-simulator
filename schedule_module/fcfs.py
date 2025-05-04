@@ -206,6 +206,3 @@ if __name__ == "__main__":
     
     for i in range(5):
         fcfs.create_process()
-    
-    fcfs.start_simulation()
-    print(fcfs.simulation_report())
